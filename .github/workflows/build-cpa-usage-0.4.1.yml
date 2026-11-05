@@ -1,0 +1,50 @@
+name: Build CPA Usage 0.4.1 (PR 21)
+on:
+  push:
+    branches:
+      - build/cpa-usage-v0.4.1-pr21
+permissions:
+  contents: read
+
+jobs:
+  build-linux-amd64:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout reviewed PR revision
+        uses: actions/checkout@v4
+        with:
+          repository: tenoms/cpa-usage
+          ref: 85aec9d7fdc0f56d6526dcaace47d188c15fd28f
+          persist-credentials: false
+      - name: Set up Go 1.27.3
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: plugin/go.sum
+      - name: Test plugin
+        working-directory: plugin
+        run: go vet ./... && go test ./...
+      - name: Build Linux AMD64 shared library
+        working-directory: plugin
+        env:
+          CGO_ENABLED: '1'
+          GOOS: linux
+          GOARCH: amd64
+        run: |
+          mkdir -p ../artifact
+          go build -trimpath -buildmode=c-shared -ldflags "-X main.version=0.4.1" -o ../artifact/usage-report-v0.4.1-linux-amd64.so .
+      - name: Verify binary
+        run: |
+          file artifact/usage-report-v0.4.1-linux-amd64.so
+          readelf -h artifact/usage-report-v0.4.1-linux-amd64.so | grep -E 'Class:|Machine:'
+          go version -m artifact/usage-report-v0.4.1-linux-amd64.so
+          sha256sum artifact/usage-report-v0.4.1-linux-amd64.so > artifact/SHA256SUMS
+          cat artifact/SHA256SUMS
+      - name: Upload compiled .so
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpa-usage-v0.4.1-linux-amd64
+          path: artifact/
+          if-no-files-found: error
+          retention-days: 7
